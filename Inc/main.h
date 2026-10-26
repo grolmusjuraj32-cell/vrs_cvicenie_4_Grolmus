@@ -45,6 +45,7 @@ extern "C" {
 #endif /* USE_FULL_ASSERT */
 
 void Error_Handler(void);
+extern volatile uint32_t system_ms;
 
 /* Private defines -----------------------------------------------------------*/
 #ifndef NVIC_PRIORITYGROUP_0

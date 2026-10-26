@@ -48,6 +48,7 @@ typedef struct
   letter_count_ count;
 } received_message;
 
+volatile uint32_t system_ms;
 volatile uint32_t dropped_messages;
 letter_count_ letter_count;
 static received_message messages[MESSAGE_QUEUE_SIZE];
@@ -75,7 +76,8 @@ int main(void)
 
   /* Space for your local variables, callback registration ...*/
 
-
+  uint32_t last_report = system_ms;
+  LL_SYSTICK_EnableIT();
 
   while (1)
   {
@@ -94,7 +96,20 @@ int main(void)
       if (!LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_7))
       {
           int length = 0;
-          if (message_read != message_write)
+          uint32_t now = system_ms;
+          if ((uint32_t)(now - last_report) >= 2000U)
+          {
+              last_report = now;
+              uint32_t occupied = DMA_USART2_BUFFER_SIZE -
+                  LL_DMA_GetDataLength(DMA1, LL_DMA_CHANNEL_6);
+              uint32_t percent_tenths = occupied * 1000U / DMA_USART2_BUFFER_SIZE;
+              length = snprintf(tx_buffer, sizeof(tx_buffer),
+                  "Buffer capacity: %u bytes, occupied memory: %lu bytes, load [in %%]: %lu.%lu%%\r\n",
+                  (unsigned)DMA_USART2_BUFFER_SIZE, (unsigned long)occupied,
+                  (unsigned long)(percent_tenths / 10U),
+                  (unsigned long)(percent_tenths % 10U));
+          }
+          else if (message_read != message_write)
           {
               received_message *message = &messages[message_read];
               length = snprintf(tx_buffer, sizeof(tx_buffer),
