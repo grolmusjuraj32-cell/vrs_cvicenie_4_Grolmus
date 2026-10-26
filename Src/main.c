@@ -23,6 +23,7 @@
 #include "dma.h"
 #include "usart.h"
 #include "gpio.h"
+#include <stdio.h>
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -38,7 +39,21 @@ void proccesDmaData(uint8_t sign);
 
 /* Space for your global variables. */
 
-	// type your global variables here:
+#define MESSAGE_LIMIT 35U
+#define MESSAGE_QUEUE_SIZE 32U
+
+typedef struct
+{
+  char text[MESSAGE_LIMIT];
+  letter_count_ count;
+} received_message;
+
+volatile uint32_t dropped_messages;
+letter_count_ letter_count;
+static received_message messages[MESSAGE_QUEUE_SIZE];
+static volatile uint8_t message_write;
+static volatile uint8_t message_read;
+static char tx_buffer[160];
 
 
 int main(void)
@@ -55,11 +70,12 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
+  USART2_RegisterCallback(proccesDmaData);
   MX_USART2_UART_Init();
 
   /* Space for your local variables, callback registration ...*/
 
-  	  //type your code here:
+
 
   while (1)
   {
@@ -75,7 +91,22 @@ int main(void)
 	   * Example message (what I wish to see in terminal) - Valid string: Platn15uborZnakov, lower-case: 13, upper-case: 2
 	   */
 
-  	  	  	  //type your code here:
+      if (!LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_7))
+      {
+          int length = 0;
+          if (message_read != message_write)
+          {
+              received_message *message = &messages[message_read];
+              length = snprintf(tx_buffer, sizeof(tx_buffer),
+                  "Valid string: %s, lower-case: %u, upper-case: %u\r\n",
+                  message->text, (unsigned)message->count.small_letter,
+                  (unsigned)message->count.capital_letter);
+              __DMB();
+              message_read = (message_read + 1U) % MESSAGE_QUEUE_SIZE;
+          }
+          if (length > 0 && (unsigned)length < sizeof(tx_buffer))
+              USART2_PutBuffer((uint8_t *)tx_buffer, (uint8_t)length);
+      }
   }
   /* USER CODE END 3 */
 }
@@ -117,9 +148,46 @@ void SystemClock_Config(void)
  */
 void proccesDmaData(uint8_t sign)
 {
-	/* Process received data */
+    static received_message current;
+    static uint8_t active;
+    static uint8_t length;
 
-		// type your algorithm here:
+    if (sign == '#')
+    {
+        active = 1;
+        length = 0;
+        current.count.small_letter = 0;
+        current.count.capital_letter = 0;
+        return;
+    }
+    if (!active) return;
+
+    if (sign == '$')
+    {
+        current.text[length] = '\0';
+        letter_count = current.count;
+        uint8_t next = (message_write + 1U) % MESSAGE_QUEUE_SIZE;
+        if (next != message_read)
+        {
+            messages[message_write] = current;
+            __DMB();
+            message_write = next;
+        }
+        else
+            dropped_messages++;
+        active = 0;
+        return;
+    }
+
+    /* The terminator must occur within 35 characters after '#'. */
+    if (length == MESSAGE_LIMIT - 1U)
+    {
+        active = 0;
+        return;
+    }
+    current.text[length++] = (char)sign;
+    if (sign >= 'a' && sign <= 'z') current.count.small_letter++;
+    if (sign >= 'A' && sign <= 'Z') current.count.capital_letter++;
 }
 
 

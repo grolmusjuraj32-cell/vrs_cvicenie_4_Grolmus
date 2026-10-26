@@ -27,7 +27,7 @@ uint8_t bufferUSART2dma[DMA_USART2_BUFFER_SIZE];
 static void (* USART2_ProcessData)(uint8_t data) = 0;
 
 /* Register callback */
-void USART2_RegisterCallback(void *callback)
+void USART2_RegisterCallback(void (*callback)(uint8_t))
 {
 	if(callback != 0)
 	{
@@ -130,6 +130,8 @@ void MX_USART2_UART_Init(void)
 // Send data stored in buffer with DMA
 void USART2_PutBuffer(uint8_t *buffer, uint8_t length)
 {
+	if (length == 0 || LL_DMA_IsEnabledChannel(DMA1, LL_DMA_CHANNEL_7)) return;
+	LL_DMA_ClearFlag_GI7(DMA1);
 	LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_7, (uint32_t)buffer);
 
 	LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_7, length);
