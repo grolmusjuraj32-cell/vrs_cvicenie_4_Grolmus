@@ -148,7 +148,35 @@ void USART2_PutBuffer(uint8_t *buffer, uint8_t length)
  */
 void USART2_CheckDmaReception(void)
 {
-	//type your implementation here
+    static uint16_t old_pos;
+    uint8_t pending[DMA_USART2_BUFFER_SIZE];
+    uint16_t remaining = LL_DMA_GetDataLength(DMA1, LL_DMA_CHANNEL_6);
+    uint16_t pos = DMA_USART2_BUFFER_SIZE - remaining;
+    uint8_t restart = (remaining == 0U) ||
+        (remaining < 20U && LL_USART_IsActiveFlag_IDLE(USART2));
+
+    if (restart)
+    {
+        LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_6);
+        /* Include any byte transferred since the first counter snapshot. */
+        pos = DMA_USART2_BUFFER_SIZE - LL_DMA_GetDataLength(DMA1, LL_DMA_CHANNEL_6);
+    }
+    uint16_t count = pos - old_pos;
+    for (uint16_t i = 0; i < count; i++)
+        pending[i] = bufferUSART2dma[old_pos + i];
+    old_pos = pos;
+
+    if (restart)
+    {
+        LL_DMA_ClearFlag_GI6(DMA1);
+        LL_DMA_SetMemoryAddress(DMA1, LL_DMA_CHANNEL_6, (uint32_t)bufferUSART2dma);
+        LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_6, DMA_USART2_BUFFER_SIZE);
+        old_pos = 0;
+        LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_6);
+    }
+    if (USART2_ProcessData != 0)
+        for (uint16_t i = 0; i < count; i++)
+            USART2_ProcessData(pending[i]);
 }
 
 
